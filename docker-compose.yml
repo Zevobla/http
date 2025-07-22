@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  tron-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    healthcheck:
+      test: >
+        sh -c "curl --fail --silent http://localhost:8000/wallets || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user", "-d", "mydatabase"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - tron-service
+      - postgres
+    env_file:
+      - .env
+    command: >
+      sh -c "
+        until curl --fail --silent http://tron-service:8000/wallets > /dev/null; do sleep 1; done;
+        pytest tests/ --maxfail=1 --disable-warnings
+      "
+
+volumes:
+  postgres_data:
